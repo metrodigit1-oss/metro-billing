@@ -20,7 +20,7 @@ function createWindow() {
   mainWindow.loadURL('http://localhost:3000')
 
   // OPTIONAL: Open the DevTools (remove this line when finished)
-  // mainWindow.webContents.openDevTools()
+  mainWindow.webContents.openDevTools()
 
   mainWindow.on('closed', function () {
     mainWindow = null
