@@ -94,7 +94,7 @@ export default function PrintPage() {
   const buyerName = buyer.name || buyer.company_name;
 
   // Header Title Logic
-  let billTitle = 'TAX INVOICE';
+  let billTitle = '';
   if(invoice.invoice_type === 'PURCHASE') billTitle = 'PURCHASE BILL';
   if(invoice.invoice_type === 'RAW_MATERIALS') billTitle = 'RAW MATERIAL BILL';
   if(invoice.invoice_type === 'MACHINE_MAINTENANCE') billTitle = 'MAINTENANCE BILL';
@@ -102,18 +102,50 @@ export default function PrintPage() {
   return (
     <div className="print-container">
       <style jsx global>{`
-        .action-bar { padding: 20px; background: #eee; margin-bottom: 20px; text-align: center; display: flex; justify-content: center; gap: 10px; }
-        @media print { @page { size: A4; margin: 10mm; } body { -webkit-print-color-adjust: exact; } .action-bar { display: none !important; } }
-        .print-container { width: 210mm; min-height: 297mm; padding: 10mm; margin: 0 auto; background: white; color: black; font-family: Arial, sans-serif; font-size: 12px; }
-        .border-box { border: 1px solid black; }
-        .flex { display: flex; }
-        .center { text-align: center; }
-        .right { text-align: right; }
-        .bold { fontWeight: bold; }
-        .pad { padding: 4px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid black; padding: 4px; vertical-align: top; }
-        .col-sn { width: 30px; } .col-desc { width: auto; } .col-hsn { width: 80px; } .col-qty { width: 80px; } .col-rate { width: 80px; } .col-per { width: 20px; } .col-amount { width: 100px; }
+        @media print {
+          @page { 
+            size: A4; 
+            margin: 10mm; 
+          }
+          body { 
+            -webkit-print-color-adjust: exact; 
+          }
+          .action-bar { display: none !important; }
+          
+          /* Ensure the table can break across pages */
+          table { page-break-inside: auto; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          thead { display: table-header-group; }
+          tfoot { display: table-footer-group; }
+        }
+
+        .print-container {
+          width: 210mm;
+          margin: 0 auto;
+          background: white;
+          color: black;
+          font-family: Arial, sans-serif;
+          font-size: 12px;
+        }
+
+        /* Remove fixed heights and single large borders */
+        .invoice-wrapper { 
+          border: 1px solid black; 
+        }
+        
+        table { 
+          width: 100%; 
+          border-collapse: collapse; 
+        }
+        
+        th, td { 
+          border: 1px solid black; 
+          padding: 6px; 
+          vertical-align: top; 
+        }
+
+        /* Prevent the large spacer row from pushing content too far */
+        .spacer-row { height: 50px; } 
       `}</style>
        <div className="action-bar">
         <button onClick={() => router.push('/history')} style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer', background: '#666', color: 'white', border: 'none', borderRadius: '4px' }}>&larr; Back to History</button>
@@ -128,7 +160,7 @@ export default function PrintPage() {
           <div style={{ position: 'absolute', top: '5px', left: '5px', fontSize: '10px', textAlign: 'left' }}>
             <div>Invoice No: <strong>{invoice.invoice_number}</strong></div>
             {invoice.reference_number && (<div>Ref. No: <strong>{invoice.reference_number}</strong></div>)}
-            <div style={{marginTop: 5, fontWeight: 'bold'}}>[ {billTitle} ]</div>
+            <div style={{marginTop: 5, fontWeight: 'bold'}}> {billTitle} </div>
           </div>
           
           {/* HEADER (SELLER) */}
@@ -146,21 +178,36 @@ export default function PrintPage() {
           </div>
         </div>
 
-        <div className="center pad" style={{ borderBottom: '1px solid black', fontWeight: 'bold' }}>
-          {isPurchase ? 'Bill Details' : 'Tax Invoice'}
-        </div>
-        
-        {/* PARTY (BUYER) */}
-        <div className="center pad" style={{ borderBottom: '1px solid black', lineHeight: '1.5' }}>
-          <div>{isPurchase ? 'Billed To (Us):' : 'Party :'} <strong>{buyerName}</strong></div>
-          <div style={{ margin: '5px 0' }}>{renderAddress(buyer)}</div>
-          <div>GSTIN/UIN: {buyer.gstin}</div>
-          <div>State Name : {buyer.state}, Code : {buyer.state_code}</div>
-          <div>Place of Supply : {buyer.place_of_supply || 'Kerala'}</div>
-          <div>Contact : {buyer.phone}</div>
-        </div>
+        <div className="center pad" style={{ 
+            borderBottom: '1px solid black', 
+            fontWeight: 'bold', 
+            textAlign: 'center', // Force explicit centering
+            width: '100%' 
+          }}>
+            {isPurchase ? 'Bill Details' : 'Tax Invoice'}
+          </div>
 
-        {/* ITEMS TABLE */}
+          {/* PARTY (BUYER) SECTION */}
+          <div className="center pad" style={{ 
+            borderBottom: '1px solid black', 
+            lineHeight: '1.5',
+            textAlign: 'center', // Force explicit centering
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center' // Ensures inner divs center if they use flex
+          }}>
+            <div style={{ width: '100%' }}>
+              {isPurchase ? 'Billed To (Us):' : 'Party :'} <strong>{buyerName}</strong>
+            </div>
+            <div style={{ margin: '5px 0', width: '100%' }}>
+              {renderAddress(buyer)}
+            </div>
+            <div style={{ width: '100%' }}>GSTIN/UIN: {buyer.gstin}</div>
+            <div style={{ width: '100%' }}>State Name : {buyer.state}, Code : {buyer.state_code}</div>
+            <div style={{ width: '100%' }}>Place of Supply : {buyer.place_of_supply || 'Kerala'}</div>
+            <div style={{ width: '100%' }}>Contact : {buyer.phone}</div>
+        </div>
+        <div className='invoice-wrapper'>
         <table style={{ border: 'none', borderBottom: '1px solid black' }}>
           <thead>
             <tr style={{ background: '#f0f0f0' }}>
@@ -188,7 +235,7 @@ export default function PrintPage() {
                 <td className="right" style={{ border: '1px solid black' }}><strong>{item.taxable_value.toFixed(2)}</strong></td>
               </tr>
             ))}
-            <tr style={{ height: '200px' }}>
+            <tr>
               <td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black' }}></td>
               {showGst && <td style={{ border: '1px solid black' }}></td>}
               <td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black' }}></td>
@@ -208,8 +255,10 @@ export default function PrintPage() {
               </>)}
           </tbody>
         </table>
+        
 
         {/* TOTALS FOOTER */}
+        <div style={{ pageBreakInside: 'avoid' }}>
         <div className="flex" style={{ borderTop: '1px solid black', borderBottom: '1px solid black' }}>
           <div style={{ flex: 1, padding: '5px', borderRight: '1px solid black', fontSize: '10px' }}>
              <div style={{ marginBottom: '10px', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>
@@ -245,6 +294,8 @@ export default function PrintPage() {
                </div>
             </div>
           </div>
+        </div>
+        </div>
         </div>
 
         <div className="pad" style={{ fontSize: '10px', marginTop: '10px' }}>
