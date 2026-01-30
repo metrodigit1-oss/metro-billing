@@ -83,6 +83,11 @@ export default function HistoryPage() {
             + Create New Invoice
           </button>
         </Link>
+        <Link href="/export">
+          <button style={{ padding: '10px 20px', background: '#28a745', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '4px', marginRight: '10px' }}>
+            📊 Export Data
+          </button>
+        </Link>
       </div>
 
       {/* FILTER BAR */}

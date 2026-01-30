@@ -313,8 +313,15 @@ export default function PrintPage() {
                 <div>Authorized Signatory</div>
             </div>
         </div>
-        <div className="center" style={{ fontSize: '10px', marginTop: '20px', paddingBottom: '10px' }}>
-           <span style={{ textDecoration: 'underline' }}>This is a Computer Generated Invoice</span>
+        <div className="center" style={{ 
+          fontSize: '10px', 
+          marginTop: '20px', 
+          paddingBottom: '10px',
+          textAlign: 'center', // Explicitly center the text alignment
+          width: '100%',       // Ensure the div spans the full width of the border-box
+          display: 'block'     // Ensure it behaves as a block-level element
+        }}>
+          <span style={{ textDecoration: 'underline' }}>This is a Computer Generated Invoice</span>
         </div>
       </div>
     </div>
