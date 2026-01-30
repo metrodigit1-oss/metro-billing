@@ -146,6 +146,29 @@ export default function PrintPage() {
 
         /* Prevent the large spacer row from pushing content too far */
         .spacer-row { height: 50px; } 
+
+        .invoice-items-container {
+          min-height: 400px; /* Adjust this value to control the empty space */
+          border: 1px solid black;
+          border-top: none;
+        }
+
+        .items-table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+
+        .items-table td {
+          border-right: 1px solid black;
+          border-left: 1px solid black;
+          padding: 8px;
+          height: 25px; /* Standard row height */
+        }
+
+        /* Ensure the last row doesn't have a bottom border so the space looks continuous */
+        .items-table tr:last-child td {
+          border-bottom: none;
+        }
       `}</style>
        <div className="action-bar">
         <button onClick={() => router.push('/history')} style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer', background: '#666', color: 'white', border: 'none', borderRadius: '4px' }}>&larr; Back to History</button>
@@ -160,6 +183,7 @@ export default function PrintPage() {
           <div style={{ position: 'absolute', top: '5px', left: '5px', fontSize: '10px', textAlign: 'left' }}>
             <div>Invoice No: <strong>{invoice.invoice_number}</strong></div>
             {invoice.reference_number && (<div>Ref. No: <strong>{invoice.reference_number}</strong></div>)}
+            <div>Mode: <strong>{invoice.payment_mode || 'CREDIT'}</strong></div>
             <div style={{marginTop: 5, fontWeight: 'bold'}}> {billTitle} </div>
           </div>
           
@@ -235,24 +259,54 @@ export default function PrintPage() {
                 <td className="right" style={{ border: '1px solid black' }}><strong>{item.taxable_value.toFixed(2)}</strong></td>
               </tr>
             ))}
-            <tr>
-              <td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black' }}></td>
-              {showGst && <td style={{ border: '1px solid black' }}></td>}
-              <td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black' }}></td>
-            </tr>
+
+            {/* DYNAMIC EMPTY ROWS to fill space */}
+            {Array.from({ length: Math.max(0, 14 - items.length) }).map((_, index) => {
+              // Style: Keep Left/Right borders, remove Top/Bottom to make it look like continuous vertical lines
+              const emptyCellStyle = { 
+                borderLeft: '1px solid black', 
+                borderRight: '1px solid black', 
+                borderTop: 'none', 
+                borderBottom: 'none', 
+                height: '28px' 
+              };
+
+              return (
+                <tr key={`empty-${index}`}>
+                  <td style={emptyCellStyle}></td>
+                  <td style={emptyCellStyle}></td>
+                  {showGst && <td style={emptyCellStyle}></td>}
+                  <td style={emptyCellStyle}></td>
+                  <td style={emptyCellStyle}></td>
+                  <td style={emptyCellStyle}></td>
+                  <td style={emptyCellStyle}></td>
+                </tr>
+              );
+            })}
+
+            {/* Tax Rows - Removed bottom borders for cells */}
             {showGst && (
               <>
                 <tr>
-                   <td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black', textAlign: 'right', fontWeight: 'bold' }}>CGST</td>
-                   <td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black' }}></td>
-                   <td className="right" style={{ border: '1px solid black', fontWeight: 'bold' }}>{invoice.total_cgst_amount?.toFixed(2)}</td>
+                    <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', borderBottom: 'none' }}></td>
+                    <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', borderBottom: 'none', textAlign: 'right', fontWeight: 'bold' }}>CGST</td>
+                    <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', borderBottom: 'none' }}></td>
+                    <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', borderBottom: 'none' }}></td>
+                    <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', borderBottom: 'none' }}></td>
+                    <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', borderBottom: 'none' }}></td>
+                    <td className="right" style={{ borderLeft: '1px solid black', borderRight: '1px solid black', borderTop: '1px solid black', borderBottom: 'none', fontWeight: 'bold' }}>{invoice.total_cgst_amount?.toFixed(2)}</td>
                 </tr>
                 <tr>
-                  <td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black', textAlign: 'right', fontWeight: 'bold' }}>SGST</td>
-                   <td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black' }}></td><td style={{ border: '1px solid black' }}></td>
-                   <td className="right" style={{ border: '1px solid black', fontWeight: 'bold' }}>{invoice.total_sgst_amount?.toFixed(2)}</td>
+                    <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', borderBottom: 'none' }}></td>
+                    <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', borderBottom: 'none', textAlign: 'right', fontWeight: 'bold' }}>SGST</td>
+                    <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', borderBottom: 'none' }}></td>
+                    <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', borderBottom: 'none' }}></td>
+                    <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', borderBottom: 'none' }}></td>
+                    <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', borderBottom: 'none' }}></td>
+                    <td className="right" style={{ borderLeft: '1px solid black', borderRight: '1px solid black', borderBottom: 'none', fontWeight: 'bold' }}>{invoice.total_sgst_amount?.toFixed(2)}</td>
                 </tr>
-              </>)}
+              </>
+            )}
           </tbody>
         </table>
         

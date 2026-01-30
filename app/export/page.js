@@ -24,24 +24,25 @@ export default function ExportPage() {
   }
 
   const handleExport = async () => {
-    setLoading(true)
-    try {
-      let query = supabase
-        .from('invoices')
-        .select(`
-          id,
-          invoice_number,
-          invoice_date,
-          invoice_type,
-          reference_number,
-          total_taxable_value,
-          total_cgst_amount,
-          total_sgst_amount,
-          grand_total,
-          is_gst_bill,
-          customers ( company_name, gstin )
-        `)
-        .order('invoice_date', { ascending: false })
+  setLoading(true)
+  try {
+    let query = supabase
+      .from('invoices')
+      .select(`
+        id,
+        invoice_number,
+        invoice_date,
+        invoice_type,
+        reference_number,
+        payment_mode,
+        total_taxable_value,
+        total_cgst_amount,
+        total_sgst_amount,
+        grand_total,
+        is_gst_bill,
+        customers ( company_name, gstin )
+      `)
+      .order('invoice_date', { ascending: false })
 
       // Apply Filters
       if (startDate) query = query.gte('invoice_date', startDate)
@@ -68,7 +69,7 @@ export default function ExportPage() {
   const exportToCSV = (data) => {
     // Define headers
     const headers = [
-      "Date", "Invoice No", "Type", "Party Name", "GSTIN", 
+      "Date", "Invoice No", "Type", "Mode", "Party Name", "GSTIN", 
       "Taxable Value", "CGST", "SGST", "Total Amount", "Status"
     ]
 
@@ -77,6 +78,7 @@ export default function ExportPage() {
       inv.invoice_date,
       inv.invoice_number,
       inv.invoice_type || 'SALE',
+      inv.payment_mode || 'CREDIT', // Added Payment Mode here
       inv.customers?.company_name || 'N/A',
       inv.customers?.gstin || 'N/A',
       inv.total_taxable_value.toFixed(2),

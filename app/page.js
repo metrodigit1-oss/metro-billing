@@ -16,6 +16,7 @@ export default function InvoicePage() {
   // 1. UPDATED MODE SELECTION
   const [invoiceType, setInvoiceType] = useState('SALE') 
   // Options: 'SALE', 'PURCHASE', 'RAW_MATERIALS', 'MACHINE_MAINTENANCE'
+  const [paymentMode, setPaymentMode] = useState('CREDIT')
 
   const [invoiceDate, setInvoiceDate] = useState('')
   useEffect(() => {
@@ -64,9 +65,11 @@ export default function InvoicePage() {
       setInvoiceNo(inv.invoice_number)
       setRefNo(inv.reference_number || '')
       setInvoiceDate(inv.invoice_date)
+      setPaymentMode(inv.payment_mode || 'CREDIT')
       setSelectedCustomer(inv.customer_id)
       setIsGstBill(inv.is_gst_bill !== false)
       setInvoiceType(inv.invoice_type || 'SALE') // Load type
+      
       
       const { data: items } = await supabase.from('invoice_items').select('*').eq('invoice_id', id)
       
@@ -150,7 +153,8 @@ export default function InvoicePage() {
       total_sgst_amount: totalSGST,
       grand_total: grandTotal,
       is_gst_bill: isGstBill,
-      invoice_type: invoiceType // Saves specific type
+      invoice_type: invoiceType, // Saves specific type
+      payment_mode: paymentMode
     }
 
     if (editId) {
@@ -269,6 +273,15 @@ export default function InvoicePage() {
           <h1 style={{ margin: 0, color: invoiceType === 'SALE' ? '#28a745' : '#dc3545', fontSize: '24px' }}>
             {invoiceType.replace('_', ' ')}
           </h1>
+          <select 
+            value={paymentMode}
+            onChange={(e) => setPaymentMode(e.target.value)}
+            style={{ padding: '5px', marginTop: '5px', display: 'block', width: '100%', textAlign: 'right', fontWeight: 'bold' }}
+          >
+            <option value="CREDIT">CREDIT</option>
+            <option value="CASH">CASH</option>
+            <option value="BANK">BANK TRANSFER</option>
+          </select>
           <input 
             type="text" 
             value={invoiceNo}
