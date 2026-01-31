@@ -11,8 +11,18 @@ export default function ManagePage() {
   const [editingId, setEditingId] = useState(null)
   const [formData, setFormData] = useState({})
 
+  // --- NEW STATES FOR ADDING ---
+  const [showAddForm, setShowAddForm] = useState(false)
+  
+  // Customer Form State
+  const [newCust, setNewCust] = useState({ name: '', address: '', gstin: '', phone: '' })
+  
+  // Product Form State
+  const [newProd, setNewProd] = useState({ name: '', hsn: '', rate: '', unit: 'NOS', gst: 18 })
+
   useEffect(() => {
     fetchData()
+    setShowAddForm(false) // Hide form when switching tabs
   }, [activeTab])
 
   async function fetchData() {
@@ -51,7 +61,45 @@ export default function ManagePage() {
     }
   }
 
-  // Common input style to make them fit cell width
+  // --- SAVE NEW CUSTOMER ---
+  async function saveNewCustomer() {
+    if (!newCust.name) return alert('Enter Name')
+    const { error } = await supabase.from('customers').insert([{
+      company_name: newCust.name,
+      address: newCust.address,
+      gstin: newCust.gstin,
+      phone: newCust.phone,
+      state: 'Kerala', state_code: 32, place_of_supply: 'Kerala'
+    }])
+
+    if (error) alert('Error: ' + error.message)
+    else {
+      setNewCust({ name: '', address: '', gstin: '', phone: '' })
+      setShowAddForm(false)
+      fetchData() // Refresh list
+    }
+  }
+
+  // --- SAVE NEW PRODUCT ---
+  async function saveNewProduct() {
+    if (!newProd.name) return alert('Enter Item Name')
+    const { error } = await supabase.from('products').insert([{
+      item_name: newProd.name,
+      hsn_sac_code: newProd.hsn,
+      default_rate: newProd.rate,
+      unit: newProd.unit,          
+      gst_rate: newProd.gst
+    }])
+
+    if (error) alert('Error: ' + error.message)
+    else {
+      setNewProd({ name: '', hsn: '', rate: '', unit: 'NOS', gst: 18 })
+      setShowAddForm(false)
+      fetchData() // Refresh list
+    }
+  }
+
+  // Common input style
   const inputStyle = { width: '100%', padding: '5px', boxSizing: 'border-box' }
 
   return (
@@ -60,26 +108,65 @@ export default function ManagePage() {
       {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h1>⚙️ Manage Data</h1>
-        <Link href="/">
-           <button style={{ padding: '10px', cursor: 'pointer' }}>&larr; Back to Invoice</button>
-        </Link>
       </div>
 
-      {/* TABS */}
-      <div style={{ marginBottom: '20px', borderBottom: '2px solid #ccc' }}>
+      {/* TABS & ADD BUTTON */}
+      <div style={{ marginBottom: '20px', borderBottom: '2px solid #ccc', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <div>
+            <button 
+            onClick={() => { setActiveTab('products'); setEditingId(null); }}
+            style={{ padding: '10px 20px', marginRight: '5px', cursor: 'pointer', background: activeTab === 'products' ? '#333' : '#eee', color: activeTab === 'products' ? 'white' : 'black', border: 'none' }}
+            >
+            Products
+            </button>
+            <button 
+            onClick={() => { setActiveTab('customers'); setEditingId(null); }}
+            style={{ padding: '10px 20px', cursor: 'pointer', background: activeTab === 'customers' ? '#333' : '#eee', color: activeTab === 'customers' ? 'white' : 'black', border: 'none' }}
+            >
+            Customers
+            </button>
+        </div>
         <button 
-          onClick={() => { setActiveTab('products'); setEditingId(null); }}
-          style={{ padding: '10px 20px', marginRight: '5px', cursor: 'pointer', background: activeTab === 'products' ? '#333' : '#eee', color: activeTab === 'products' ? 'white' : 'black', border: 'none' }}
+            onClick={() => setShowAddForm(!showAddForm)}
+            style={{ padding: '8px 16px', marginBottom: '5px', background: showAddForm ? '#666' : 'green', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
         >
-          Products
-        </button>
-        <button 
-          onClick={() => { setActiveTab('customers'); setEditingId(null); }}
-          style={{ padding: '10px 20px', cursor: 'pointer', background: activeTab === 'customers' ? '#333' : '#eee', color: activeTab === 'customers' ? 'white' : 'black', border: 'none' }}
-        >
-          Customers
+            {showAddForm ? 'Cancel' : `+ Add New ${activeTab === 'products' ? 'Item' : 'Party'}`}
         </button>
       </div>
+
+      {/* ADD NEW FORMS */}
+      {showAddForm && (
+        <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '15px', borderRadius: '5px', background: '#f9f9f9' }}>
+            <h3 style={{marginTop: 0, marginBottom: '10px'}}>Create New {activeTab === 'products' ? 'Product' : 'Customer'}</h3>
+            
+            {activeTab === 'products' ? (
+                // PRODUCT FORM
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input placeholder="Item Name" style={{ flex: 2, padding: '8px', border: '1px solid #ddd' }} value={newProd.name} onChange={e => setNewProd({...newProd, name: e.target.value})} />
+                    <input placeholder="HSN Code" style={{ flex: 1, padding: '8px', border: '1px solid #ddd' }} value={newProd.hsn} onChange={e => setNewProd({...newProd, hsn: e.target.value})} />
+                    <input type="number" placeholder="Rate" style={{ flex: 1, padding: '8px', border: '1px solid #ddd' }} value={newProd.rate} onChange={e => setNewProd({...newProd, rate: e.target.value})} />
+                    <select style={{ flex: 1, padding: '8px', border: '1px solid #ddd' }} value={newProd.unit} onChange={e => setNewProd({...newProd, unit: e.target.value})}>
+                        <option value="NOS">NOS</option><option value="SQFT">SQFT</option><option value="KG">KG</option><option value="MTR">MTR</option><option value="Sheet">Sheet</option>
+                    </select>
+                    <input type="number" placeholder="GST %" style={{ flex: 1, padding: '8px', border: '1px solid #ddd' }} value={newProd.gst} onChange={e => setNewProd({...newProd, gst: e.target.value})} />
+                    <button onClick={saveNewProduct} style={{ background: '#28a745', color: 'white', border: 'none', padding: '8px 20px', cursor: 'pointer', borderRadius: '4px' }}>Save</button>
+                </div>
+            ) : (
+                // CUSTOMER FORM
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <input placeholder="Company/Party Name" style={{ flex: 1, padding: '8px', border: '1px solid #ddd' }} value={newCust.name} onChange={e => setNewCust({...newCust, name: e.target.value})} />
+                        <input placeholder="Phone" style={{ flex: 1, padding: '8px', border: '1px solid #ddd' }} value={newCust.phone} onChange={e => setNewCust({...newCust, phone: e.target.value})} />
+                    </div>
+                    <textarea placeholder="Address" style={{ padding: '8px', height: '60px', border: '1px solid #ddd' }} value={newCust.address} onChange={e => setNewCust({...newCust, address: e.target.value})} />
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <input placeholder="GSTIN" style={{ flex: 1, padding: '8px', border: '1px solid #ddd' }} value={newCust.gstin} onChange={e => setNewCust({...newCust, gstin: e.target.value})} />
+                        <button onClick={saveNewCustomer} style={{ background: '#28a745', color: 'white', border: 'none', padding: '8px 20px', cursor: 'pointer', borderRadius: '4px' }}>Save Customer</button>
+                    </div>
+                </div>
+            )}
+        </div>
+      )}
 
       {/* TABLE */}
       <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
@@ -134,11 +221,11 @@ export default function ManagePage() {
                   <td style={{ padding: '5px' }}>
                     {isEditing ? (
                         <select style={inputStyle} value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})}>
-                            <option value="NOS">NOS</option><option value="SQFT">SQFT</option><option value="KG">KG</option><option value="MTR">MTR</option>
+                            <option value="NOS">NOS</option><option value="SQFT">SQFT</option><option value="KG">KG</option><option value="MTR">MTR</option><option value="Sheet">Sheet</option>
                         </select>
                     ) : item.unit}
                   </td>
-                  {/* GST (Assuming you added this column, if not, remove this td block) */}
+                  {/* GST */}
                   <td style={{ padding: '5px' }}>
                     {isEditing ? <input type="number" style={inputStyle} value={formData.gst_rate} onChange={e => setFormData({...formData, gst_rate: e.target.value})} /> : (item.gst_rate || 18)}
                   </td>

@@ -34,15 +34,11 @@ function BankForm() {
     if (editId) {
       loadEntryForEdit(editId)
     } else {
-      fetchNextVchNo('Bank Payment') 
+      fetchNextVchNo() 
     }
   }, [editId])
 
-  useEffect(() => {
-    if (!editId) {
-      fetchNextVchNo(formData.vch_type)
-    }
-  }, [formData.vch_type, editId])
+  // Removed the useEffect for formData.vch_type as Vch No is now global
 
   async function fetchCustomers() {
     const { data } = await supabase.from('customers').select('company_name')
@@ -69,17 +65,10 @@ function BankForm() {
   async function fetchNextVchNo() {
     if(editId) return; 
 
+    // Count ALL rows in bank_book
     const { count } = await supabase
       .from('bank_book')
       .select('*', { count: 'exact', head: true })
-    
-    setFormData(prev => ({ ...prev, vch_no: (count || 0) + 1 }))
-  }
-
-    const { count } = await supabase
-      .from('bank_book')
-      .select('*', { count: 'exact', head: true })
-      .eq('vch_type', type)
     
     setFormData(prev => ({ ...prev, vch_no: (count || 0) + 1 }))
   }

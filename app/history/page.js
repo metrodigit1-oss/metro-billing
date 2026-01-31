@@ -12,7 +12,8 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true)
   
   // DATA STATES
-  const [monthlyData, setMonthlyData] = useState([])
+  const [allInvoices, setAllInvoices] = useState([]) // Raw data
+  const [monthlyData, setMonthlyData] = useState([]) // Processed/Filtered data
   
   // FILTER STATES
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
@@ -25,10 +26,33 @@ export default function HistoryPage() {
   // FILTERS
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState('ALL')
+  const [gstFilter, setGstFilter] = useState('ALL') // NEW: GST Filter State
 
   useEffect(() => {
     fetchInvoices()
   }, [])
+
+  // Re-calculate report when ANY filter or raw data changes
+  useEffect(() => {
+    if (allInvoices.length > 0) {
+      calculateMonthlyReport(allInvoices)
+    } else {
+      setMonthlyData([]) // Clear data if no invoices loaded
+    }
+  }, [allInvoices, filterType, gstFilter]) // Added gstFilter dependency
+
+  // Keep selectedMonth synced if data updates
+  useEffect(() => {
+    if (selectedMonth && monthlyData.length > 0) {
+      const updatedMonth = monthlyData.find(m => m.key === selectedMonth.key)
+      if (updatedMonth) {
+        setSelectedMonth(updatedMonth)
+      } else {
+        setView('SUMMARY')
+        setSelectedMonth(null)
+      }
+    }
+  }, [monthlyData])
 
   useEffect(() => {
     if (returnToMonth && monthlyData.length > 0) {
@@ -48,27 +72,44 @@ export default function HistoryPage() {
         *,
         customers ( company_name )
       `)
-      // KEEP THIS ASCENDING: Necessary to generate stable Vch Nos (1, 2, 3...)
       .order('invoice_date', { ascending: true }) 
 
     if (error) console.log('Error:', error)
     else {
-      calculateMonthlyReport(data)
+      setAllInvoices(data || [])
     }
     setLoading(false)
   }
 
   function calculateMonthlyReport(rawInvoices) {
-    // 1. Assign Global Serial Number (Vch No) based on Ascending Date
+    // 1. Assign Global Serial Number BEFORE filtering
     const invoicesWithSerial = rawInvoices.map((inv, index) => ({
       ...inv,
       vchNo: index + 1 
     }))
 
+    // 2. Apply Filters (Type AND GST)
+    const filteredInvoices = invoicesWithSerial.filter(inv => {
+        // Type Filter
+        if (filterType !== 'ALL') {
+            const invType = inv.invoice_type || 'SALE'
+            if (invType !== filterType) return false
+        }
+
+        // GST Filter
+        if (gstFilter !== 'ALL') {
+            const isGst = inv.is_gst_bill === true
+            if (gstFilter === 'GST' && !isGst) return false
+            if (gstFilter === 'NON_GST' && isGst) return false
+        }
+
+        return true
+    })
+
     const groups = {}
     
-    // 2. Group by Month
-    invoicesWithSerial.forEach(inv => {
+    // 3. Group by Month
+    filteredInvoices.forEach(inv => {
       if(!inv.invoice_date) return;
       const d = new Date(inv.invoice_date)
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -86,7 +127,7 @@ export default function HistoryPage() {
       groups[key].totalDebit += (inv.grand_total || 0)
     })
 
-    // 3. Sort Keys Chronologically to calculate Running Balance correctly
+    // 4. Sort Keys
     const sortedKeys = Object.keys(groups).sort()
     
     let runningBalance = 0
@@ -95,7 +136,7 @@ export default function HistoryPage() {
         const item = groups[key]
         runningBalance += item.totalDebit
         
-        // 4. SORT INVOICES DESCENDING (Newest First) for Display
+        // 5. Sort Invoices
         item.invoices.sort((a, b) => b.vchNo - a.vchNo)
 
         return {
@@ -104,13 +145,13 @@ export default function HistoryPage() {
         }
     })
 
-    // 5. REVERSE MONTHS for Display (December at top, January at bottom)
     reportData = reportData.reverse()
 
-    // Extract years
+    // Extract years from FILTERED data
     const years = [...new Set(reportData.map(d => parseInt(d.key.split('-')[0])))].sort().reverse()
     setAvailableYears(years)
     
+    // Adjust selected year if current selection is invalid
     if (years.length > 0 && !years.includes(selectedYear)) {
        setSelectedYear(years[0])
     }
@@ -129,11 +170,9 @@ export default function HistoryPage() {
     setSelectedMonth(monthItem)
     setView('DETAIL')
     setSearchTerm('') 
-    setFilterType('ALL')
   }
 
   function handleEditInvoice(id) {
-      // PASS THE SELECTED MONTH KEY IF AVAILABLE
       if (selectedMonth) {
           router.push(`/?id=${id}&returnMonth=${selectedMonth.key}`)
       } else {
@@ -162,47 +201,63 @@ export default function HistoryPage() {
   const getFilteredInvoices = () => {
     if (!selectedMonth) return []
     return selectedMonth.invoices.filter(inv => {
-      const invType = inv.invoice_type || 'SALE'
-      const matchesType = filterType === 'ALL' || invType === filterType
       const partyName = inv.customers?.company_name || ''
       const vchNoStr = String(inv.vchNo)
-      const matchesSearch = 
-        vchNoStr.includes(searchTerm) ||
-        partyName.toLowerCase().includes(searchTerm.toLowerCase())
-      return matchesType && matchesSearch
+      return vchNoStr.includes(searchTerm) ||
+             partyName.toLowerCase().includes(searchTerm.toLowerCase())
     })
   }
 
   const filteredInvoices = getFilteredInvoices()
-
   const visibleMonths = monthlyData.filter(m => m.key.startsWith(String(selectedYear)))
   
   const yearTotalDebit = visibleMonths.reduce((sum, m) => sum + m.totalDebit, 0)
-  const yearClosingBalance = visibleMonths.length > 0 
-    ? visibleMonths[0].closingBalance 
-    : 0
+  const yearClosingBalance = visibleMonths.length > 0 ? visibleMonths[0].closingBalance : 0
 
   return (
     <div className="min-h-screen bg-gray-50 p-8 font-sans">
       <div className="max-w-6xl mx-auto">
         
         {/* HEADER */}
-        <div className="flex justify-between items-center mb-8">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
             <h1 className="text-3xl font-bold text-gray-900">
                 {view === 'SUMMARY' ? 'Particulars' : `Particulars: ${selectedMonth?.monthName}`}
             </h1>
             
-            {view === 'SUMMARY' && (
+            {/* TYPE FILTER */}
+            <select 
+                value={filterType} 
+                onChange={(e) => setFilterType(e.target.value)}
+                className="p-2 bg-white border border-gray-300 rounded-lg text-sm font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+                <option value="ALL">All Types</option>
+                <option value="SALE">Sales</option>
+                <option value="PURCHASE">Purchases</option>
+                <option value="RAW_MATERIALS">Raw Materials</option>
+                <option value="MACHINE_MAINTENANCE">Machine Maint.</option>
+            </select>
+
+            {/* GST FILTER */}
+            <select 
+                value={gstFilter} 
+                onChange={(e) => setGstFilter(e.target.value)}
+                className="p-2 bg-white border border-gray-300 rounded-lg text-sm font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+                <option value="ALL">All Bills</option>
+                <option value="GST">GST Only</option>
+                <option value="NON_GST">Non-GST Only</option>
+            </select>
+
+            {view === 'SUMMARY' && availableYears.length > 0 && (
                 <select 
                     value={selectedYear} 
                     onChange={(e) => setSelectedYear(Number(e.target.value))}
-                    className="ml-4 p-2 bg-white border border-gray-300 rounded-lg text-lg font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="p-2 bg-white border border-gray-300 rounded-lg text-lg font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                     {availableYears.map(y => (
                         <option key={y} value={y}>{y}</option>
                     ))}
-                    {availableYears.length === 0 && <option value={selectedYear}>{selectedYear}</option>}
                 </select>
             )}
           </div>
@@ -217,7 +272,7 @@ export default function HistoryPage() {
                      📊 Export This Month
                    </button>
                    <button 
-                     onClick={() => { setView('SUMMARY'); router.replace('/history'); }}
+                     onClick={() => { setView('SUMMARY'); setSelectedMonth(null); }}
                      className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors shadow-sm"
                    >
                      &larr; Back to Months
@@ -254,26 +309,29 @@ export default function HistoryPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {visibleMonths.map((item) => (
-                    <tr 
-                        key={item.key} 
-                        onClick={() => openMonth(item)}
-                        className="hover:bg-blue-50 transition-colors cursor-pointer group"
-                    >
-                      <td className="p-4 font-medium text-blue-600 group-hover:underline">
-                        {item.monthName}
-                      </td>
-                      <td className="p-4 text-right font-medium">
-                        {item.totalDebit.toFixed(2)}
-                      </td>
-                      <td className="p-4 text-right font-bold text-gray-800">
-                        {item.closingBalance.toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
-                  {visibleMonths.length === 0 && (
+                  {visibleMonths.length > 0 ? (
+                    visibleMonths.map((item) => (
+                        <tr 
+                            key={item.key} 
+                            onClick={() => openMonth(item)}
+                            className="hover:bg-blue-50 transition-colors cursor-pointer group"
+                        >
+                        <td className="p-4 font-medium text-blue-600 group-hover:underline">
+                            {item.monthName}
+                        </td>
+                        <td className="p-4 text-right font-medium">
+                            {item.totalDebit.toFixed(2)}
+                        </td>
+                        <td className="p-4 text-right font-bold text-gray-800">
+                            {item.closingBalance.toFixed(2)}
+                        </td>
+                        </tr>
+                    ))
+                  ) : (
                     <tr>
-                        <td colSpan="3" className="p-8 text-center text-gray-400">No records found for {selectedYear}.</td>
+                        <td colSpan="3" className="p-8 text-center text-gray-500 italic">
+                            No invoices match the selected filters.
+                        </td>
                     </tr>
                   )}
                   {/* GAP ROW */}
@@ -304,17 +362,6 @@ export default function HistoryPage() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="flex-1 p-2 border border-gray-300 rounded text-sm outline-none focus:border-blue-500"
                 />
-                <select 
-                  value={filterType} 
-                  onChange={(e) => setFilterType(e.target.value)}
-                  className="p-2 border border-gray-300 rounded text-sm outline-none focus:border-blue-500 cursor-pointer"
-                >
-                  <option value="ALL">All Types</option>
-                  <option value="SALE">Sale</option>
-                  <option value="PURCHASE">Purchase</option>
-                  <option value="RAW_MATERIALS">Raw Materials</option>
-                  <option value="MACHINE_MAINTENANCE">Machine Maint.</option>
-                </select>
               </div>
 
               <table className="w-full text-left border-collapse">
@@ -335,7 +382,6 @@ export default function HistoryPage() {
                         {formatDate(inv.invoice_date)}
                       </td>
                       <td className="p-4 font-medium">
-                        {/* MAKE INVOICE NAME (PARTICULARS) CLICKABLE FOR EDIT */}
                         <button 
                             onClick={(e) => { e.stopPropagation(); handleEditInvoice(inv.id); }}
                             className="text-gray-900 hover:text-blue-600 hover:underline font-medium text-left"
@@ -355,7 +401,6 @@ export default function HistoryPage() {
                         {inv.grand_total.toFixed(2)}
                       </td>
                       <td className="p-4 text-center flex justify-center gap-2">
-                        {/* ADDED EDIT BUTTON */}
                         <button 
                             onClick={(e) => { e.stopPropagation(); handleEditInvoice(inv.id); }}
                             className="p-2 text-yellow-600 hover:bg-yellow-50 rounded"

@@ -36,17 +36,12 @@ function CashForm() {
       loadEntryForEdit(editId)
     } else {
       // Only fetch next number if NOT editing
-      fetchNextVchNo('Payment') 
+      fetchNextVchNo() 
     }
   }, [editId])
 
-  // If we change type while ADDING, fetch next number. 
-  // If EDITING, keep the original number (don't auto-change it)
-  useEffect(() => {
-    if (!editId) {
-      fetchNextVchNo(formData.vch_type)
-    }
-  }, [formData.vch_type, editId])
+  // Removed the useEffect that watched formData.vch_type
+  // The Vch No is now global (1, 2, 3...) regardless of Payment/Receipt type.
 
   async function fetchCustomers() {
     const { data } = await supabase.from('customers').select('company_name')
@@ -72,14 +67,14 @@ function CashForm() {
     })
   }
 
-  async function fetchNextVchNo(type) {
+  async function fetchNextVchNo() {
     // Only calculate next number for new entries
     if(editId) return; 
 
+    // Count ALL rows in cash_book to match the "Global Chronological Order"
     const { count } = await supabase
       .from('cash_book')
       .select('*', { count: 'exact', head: true })
-      .eq('vch_type', type)
     
     setFormData(prev => ({ ...prev, vch_no: (count || 0) + 1 }))
   }
