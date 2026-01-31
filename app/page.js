@@ -42,6 +42,7 @@ export default function InvoicePage() {
 
   const searchParams = useSearchParams()
   const editId = searchParams.get('id') 
+  const returnMonth = searchParams.get('returnMonth') // Catch the return month param
 
   // --- LOAD DATA ---
   useEffect(() => {
@@ -129,6 +130,15 @@ export default function InvoicePage() {
     }
   }
 
+  // --- BACK NAVIGATION ---
+  const handleBack = () => {
+    if (returnMonth) {
+        router.push(`/history?month=${returnMonth}`)
+    } else {
+        router.push('/history')
+    }
+  }
+
   // --- SAVE ---
   async function saveInvoice() {
     const isSales = invoiceType === 'SALE';
@@ -186,7 +196,15 @@ export default function InvoicePage() {
     const { error: itemError } = await supabase.from('invoice_items').insert(itemsToSave)
 
     if (itemError) alert('Error saving items: ' + itemError.message)
-    else router.push(`/print/${currentInvoiceId}`)
+    else {
+        // If we are editing and came from history, return to that history page on save
+        // Otherwise go to print
+        if (editId && returnMonth) {
+            router.push(`/history?month=${returnMonth}`)
+        } else {
+            router.push(`/print/${currentInvoiceId}`)
+        }
+    }
     
     setIsSaving(false)
   }
@@ -269,10 +287,20 @@ export default function InvoicePage() {
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          {/* Dynamic Header Color based on type */}
-          <h1 style={{ margin: 0, color: invoiceType === 'SALE' ? '#28a745' : '#dc3545', fontSize: '24px' }}>
-            {invoiceType.replace('_', ' ')}
-          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
+            {/* BACK BUTTON APPEARS ONLY WHEN EDITING */}
+            {editId && (
+                <button 
+                    onClick={handleBack}
+                    style={{ background: '#666', color: 'white', padding: '5px 10px', fontSize: '12px', borderRadius: '4px', border: 'none', cursor: 'pointer' }}
+                >
+                    &larr; Back
+                </button>
+            )}
+            <h1 style={{ margin: 0, color: invoiceType === 'SALE' ? '#28a745' : '#dc3545', fontSize: '24px' }}>
+                {invoiceType.replace('_', ' ')}
+            </h1>
+          </div>
           <select 
             value={paymentMode}
             onChange={(e) => setPaymentMode(e.target.value)}
@@ -438,7 +466,7 @@ export default function InvoicePage() {
       </div>
       <div style={{ marginTop: '30px', borderTop: '2px solid #333', paddingTop: '20px', textAlign: 'right' }}>
         <button onClick={saveInvoice} disabled={isSaving} style={{ background: isSaving ? '#ccc' : '#28a745', color: 'white', padding: '15px 40px', fontSize: '18px', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
-          {editId ? 'Update Invoice' : 'Save & Print'}
+          {editId ? 'Save Update' : 'Save & Print'}
         </button>
       </div>
     </div>

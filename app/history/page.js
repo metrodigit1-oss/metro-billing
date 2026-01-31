@@ -19,10 +19,10 @@ export default function HistoryPage() {
   const [availableYears, setAvailableYears] = useState([])
 
   // VIEW STATES
-  const [view, setView] = useState('SUMMARY') // 'SUMMARY' or 'DETAIL'
+  const [view, setView] = useState('SUMMARY') 
   const [selectedMonth, setSelectedMonth] = useState(null)
 
-  // RESTORED FILTERS (For Detail View)
+  // FILTERS
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState('ALL')
 
@@ -34,7 +34,6 @@ export default function HistoryPage() {
     if (returnToMonth && monthlyData.length > 0) {
       const targetMonth = monthlyData.find(m => m.key === returnToMonth)
       if (targetMonth) {
-        // If we are returning to a month, ensure the year is selected
         const monthYear = parseInt(targetMonth.key.split('-')[0])
         setSelectedYear(monthYear)
         openMonth(targetMonth)
@@ -49,6 +48,7 @@ export default function HistoryPage() {
         *,
         customers ( company_name )
       `)
+      // KEEP THIS ASCENDING: Necessary to generate stable Vch Nos (1, 2, 3...)
       .order('invoice_date', { ascending: true }) 
 
     if (error) console.log('Error:', error)
@@ -59,7 +59,7 @@ export default function HistoryPage() {
   }
 
   function calculateMonthlyReport(rawInvoices) {
-    // 1. Assign Global Serial Number (Vch No)
+    // 1. Assign Global Serial Number (Vch No) based on Ascending Date
     const invoicesWithSerial = rawInvoices.map((inv, index) => ({
       ...inv,
       vchNo: index + 1 
@@ -86,16 +86,17 @@ export default function HistoryPage() {
       groups[key].totalDebit += (inv.grand_total || 0)
     })
 
+    // 3. Sort Keys Chronologically to calculate Running Balance correctly
     const sortedKeys = Object.keys(groups).sort()
     
     let runningBalance = 0
     
-    const reportData = sortedKeys.map(key => {
+    let reportData = sortedKeys.map(key => {
         const item = groups[key]
         runningBalance += item.totalDebit
         
-        // Sort invoices by Vch No within the month
-        item.invoices.sort((a, b) => a.vchNo - b.vchNo)
+        // 4. SORT INVOICES DESCENDING (Newest First) for Display
+        item.invoices.sort((a, b) => b.vchNo - a.vchNo)
 
         return {
             ...item,
@@ -103,11 +104,13 @@ export default function HistoryPage() {
         }
     })
 
-    // Extract unique years for the dropdown
+    // 5. REVERSE MONTHS for Display (December at top, January at bottom)
+    reportData = reportData.reverse()
+
+    // Extract years
     const years = [...new Set(reportData.map(d => parseInt(d.key.split('-')[0])))].sort().reverse()
     setAvailableYears(years)
     
-    // If the current selected year isn't in the data (and we have data), select the latest year
     if (years.length > 0 && !years.includes(selectedYear)) {
        setSelectedYear(years[0])
     }
@@ -129,6 +132,15 @@ export default function HistoryPage() {
     setFilterType('ALL')
   }
 
+  function handleEditInvoice(id) {
+      // PASS THE SELECTED MONTH KEY IF AVAILABLE
+      if (selectedMonth) {
+          router.push(`/?id=${id}&returnMonth=${selectedMonth.key}`)
+      } else {
+          router.push(`/?id=${id}`)
+      }
+  }
+
   function handleExportMonth() {
     if (!selectedMonth) return
     const [year, month] = selectedMonth.key.split('-').map(Number)
@@ -147,7 +159,6 @@ export default function HistoryPage() {
     return `${day}-${month}-${year}`;
   }
 
-  // --- FILTER LOGIC ---
   const getFilteredInvoices = () => {
     if (!selectedMonth) return []
     return selectedMonth.invoices.filter(inv => {
@@ -164,14 +175,11 @@ export default function HistoryPage() {
 
   const filteredInvoices = getFilteredInvoices()
 
-  // --- DERIVED DATA FOR CURRENT VIEW ---
   const visibleMonths = monthlyData.filter(m => m.key.startsWith(String(selectedYear)))
   
-  // Calculate totals for the visible year
   const yearTotalDebit = visibleMonths.reduce((sum, m) => sum + m.totalDebit, 0)
-  // The closing balance shown at the bottom should be the closing balance of the LAST visible month
   const yearClosingBalance = visibleMonths.length > 0 
-    ? visibleMonths[visibleMonths.length - 1].closingBalance 
+    ? visibleMonths[0].closingBalance 
     : 0
 
   return (
@@ -185,7 +193,6 @@ export default function HistoryPage() {
                 {view === 'SUMMARY' ? 'Particulars' : `Particulars: ${selectedMonth?.monthName}`}
             </h1>
             
-            {/* YEAR DROPDOWN (Only visible in Summary view) */}
             {view === 'SUMMARY' && (
                 <select 
                     value={selectedYear} 
@@ -327,8 +334,14 @@ export default function HistoryPage() {
                       <td className="p-4 text-gray-600">
                         {formatDate(inv.invoice_date)}
                       </td>
-                      <td className="p-4 font-medium text-gray-900">
-                        {inv.customers?.company_name || 'Unknown Party'}
+                      <td className="p-4 font-medium">
+                        {/* MAKE INVOICE NAME (PARTICULARS) CLICKABLE FOR EDIT */}
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); handleEditInvoice(inv.id); }}
+                            className="text-gray-900 hover:text-blue-600 hover:underline font-medium text-left"
+                        >
+                            {inv.customers?.company_name || 'Unknown Party'}
+                        </button>
                       </td>
                       <td className="p-4 text-sm">
                         <span className={`px-2 py-1 rounded text-xs font-bold ${inv.is_gst_bill ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
@@ -342,6 +355,14 @@ export default function HistoryPage() {
                         {inv.grand_total.toFixed(2)}
                       </td>
                       <td className="p-4 text-center flex justify-center gap-2">
+                        {/* ADDED EDIT BUTTON */}
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); handleEditInvoice(inv.id); }}
+                            className="p-2 text-yellow-600 hover:bg-yellow-50 rounded"
+                            title="Edit"
+                        >
+                            ✏️
+                        </button>
                         <button 
                             onClick={(e) => { e.stopPropagation(); router.push(`/print/${inv.id}?month=${selectedMonth.key}`); }}
                             className="p-2 text-blue-600 hover:bg-blue-50 rounded"
