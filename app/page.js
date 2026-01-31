@@ -281,6 +281,8 @@ export default function InvoicePage() {
           <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Ernakulam, Kerala</p>
           <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
             <Link href="/history"><button style={{ fontSize: '12px', padding: '5px' }}>📂 View Past Invoices</button></Link>
+            <Link href="/cash"><button style={{ fontSize: '12px', padding: '5px', cursor:'pointer' }}>💰 Cash Book</button></Link>
+            <Link href="/bank"><button style={{ fontSize: '12px', padding: '5px', cursor:'pointer', marginLeft: '5px' }}>🏦 Bank Book</button></Link>
             <Link href="/manage"><button style={{ fontSize: '12px', padding: '5px' }}>⚙️ Manage Data</button></Link>
             {role === 'admin' && <Link href="/admin/users"><button style={{ fontSize: '12px', padding: '5px' }}>👑 Admin</button></Link>}
             <Link href="/profile"><button style={{ fontSize: '12px', padding: '5px' }}>👤 Profile</button></Link>
