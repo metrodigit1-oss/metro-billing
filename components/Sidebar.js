@@ -17,6 +17,9 @@ const Icons = {
   Bank: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="21" x2="21" y2="21"></line><line x1="5" y1="21" x2="5" y2="10"></line><line x1="19" y1="21" x2="19" y2="10"></line><polyline points="5 10 12 3 19 10"></polyline><line x1="9" y1="21" x2="9" y2="10"></line><line x1="15" y1="21" x2="15" y2="10"></line><line x1="12" y1="21" x2="12" y2="10"></line></svg>
   ),
+  Export: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+  ),
   Manage: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
   ),
@@ -37,12 +40,13 @@ export default function Sidebar() {
     { name: 'Past Invoices', href: '/history', icon: Icons.History },
     { name: 'Cash Book', href: '/cash', icon: Icons.Cash },
     { name: 'Bank Book', href: '/bank', icon: Icons.Bank },
+    { name: 'Export Reports', href: '/export', icon: Icons.Export },
     { name: 'Manage Data', href: '/manage', icon: Icons.Manage },
     { name: 'My Profile', href: '/profile', icon: Icons.Profile },
   ]
 
   if (role === 'admin') {
-    navItems.splice(5, 0, { name: 'Admin Panel', href: '/admin/users', icon: Icons.Admin })
+    navItems.splice(6, 0, { name: 'Admin Panel', href: '/admin/users', icon: Icons.Admin })
   }
 
   return (
