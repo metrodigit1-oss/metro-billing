@@ -1,16 +1,18 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../utils/supabaseClient'
-import { useParams } from 'next/navigation'
-import { useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation' // Added useSearchParams
 
 export default function PrintPage() {
   const params = useParams()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const backMonth = searchParams.get('month') // Get the month key passed from history
+
   const [invoice, setInvoice] = useState(null)
   const [items, setItems] = useState([])
-  const [company, setCompany] = useState(null) // Metro
-  const [customer, setCustomer] = useState(null) // External Party
-  const router = useRouter()
+  const [company, setCompany] = useState(null)
+  const [customer, setCustomer] = useState(null)
 
   useEffect(() => {
     if (params.id) loadInvoice(params.id)
@@ -26,6 +28,15 @@ export default function PrintPage() {
       setItems(invItems)
       const { data: comp } = await supabase.from('companies').select('*').limit(1).single()
       setCompany(comp)
+    }
+  }
+
+  // Handle back navigation logic
+  const handleBack = () => {
+    if (backMonth) {
+      router.push(`/history?month=${backMonth}`)
+    } else {
+      router.push('/history')
     }
   }
 
@@ -63,7 +74,6 @@ export default function PrintPage() {
     return output + ' Only';
   }
 
-  // Helper for cleanly rendering addresses
   function renderAddress(entity) {
     if (!entity) return null;
     if (entity.address_line_1) {
@@ -81,19 +91,13 @@ export default function PrintPage() {
   if (!invoice || !company || !customer) return <div>Loading Invoice...</div>
   const showGst = invoice.is_gst_bill !== false;
   
-  // --- TYPE LOGIC ---
-  // Any type that IS NOT 'SALE' acts like a Purchase (we are buying)
   const isPurchase = invoice.invoice_type && invoice.invoice_type !== 'SALE';
-  
-  // If Purchase: Seller is the selected Customer (Client), Buyer is Us (Company)
-  // If Sale: Seller is Us (Company), Buyer is selected Customer
   const seller = isPurchase ? customer : company;
   const buyer = isPurchase ? company : customer;
 
   const sellerName = seller.name || seller.company_name;
   const buyerName = buyer.name || buyer.company_name;
 
-  // Header Title Logic
   let billTitle = '';
   if(invoice.invoice_type === 'PURCHASE') billTitle = 'PURCHASE BILL';
   if(invoice.invoice_type === 'RAW_MATERIALS') billTitle = 'RAW MATERIAL BILL';
@@ -111,8 +115,6 @@ export default function PrintPage() {
             -webkit-print-color-adjust: exact; 
           }
           .action-bar { display: none !important; }
-          
-          /* Ensure the table can break across pages */
           table { page-break-inside: auto; }
           tr { page-break-inside: avoid; page-break-after: auto; }
           thead { display: table-header-group; }
@@ -128,7 +130,6 @@ export default function PrintPage() {
           font-size: 12px;
         }
 
-        /* Remove fixed heights and single large borders */
         .invoice-wrapper { 
           border: 1px solid black; 
         }
@@ -144,38 +145,25 @@ export default function PrintPage() {
           vertical-align: top; 
         }
 
-        /* Prevent the large spacer row from pushing content too far */
-        .spacer-row { height: 50px; } 
-
-        .invoice-items-container {
-          min-height: 400px; /* Adjust this value to control the empty space */
-          border: 1px solid black;
-          border-top: none;
-        }
-
-        .items-table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-
         .items-table td {
           border-right: 1px solid black;
           border-left: 1px solid black;
           padding: 8px;
-          height: 25px; /* Standard row height */
+          height: 25px;
         }
 
-        /* Ensure the last row doesn't have a bottom border so the space looks continuous */
         .items-table tr:last-child td {
           border-bottom: none;
         }
       `}</style>
        <div className="action-bar">
-        <button onClick={() => router.push('/history')} style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer', background: '#666', color: 'white', border: 'none', borderRadius: '4px' }}>&larr; Back to History</button>
-        <button onClick={() => window.print()} style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}>🖨️ Print Invoice</button>
+        {/* UPDATED BACK BUTTON */}
+        <button onClick={handleBack} style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer', background: '#666', color: 'white', border: 'none', borderRadius: '4px' }}>&larr; Back </button>
+        <button onClick={() => window.print()} style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', marginLeft: '10px' }}>🖨️ Print Invoice</button>
       </div>
 
       <div className="border-box">
+        {/* ... Rest of the print layout remains exactly the same ... */}
         <div className="pad" style={{ borderBottom: '1px solid black', position: 'relative', textAlign: 'center', minHeight: '100px' }}>
           <div style={{ position: 'absolute', top: '5px', right: '5px', fontSize: '10px', textAlign: 'right' }}>
             Dated &nbsp; <strong>{formatDate(invoice.invoice_date)}</strong>
@@ -187,7 +175,6 @@ export default function PrintPage() {
             <div style={{marginTop: 5, fontWeight: 'bold'}}> {billTitle} </div>
           </div>
           
-          {/* HEADER (SELLER) */}
           <div style={{ paddingTop: '5px' }}>
             <h3 style={{ margin: '0 0 5px 0', textTransform: 'uppercase' }}><strong>{sellerName}</strong></h3>
             <div style={{ lineHeight: '1.4', fontSize: '11px', marginTop: '5px' }}>
@@ -205,20 +192,19 @@ export default function PrintPage() {
         <div className="center pad" style={{ 
             borderBottom: '1px solid black', 
             fontWeight: 'bold', 
-            textAlign: 'center', // Force explicit centering
+            textAlign: 'center',
             width: '100%' 
           }}>
             {isPurchase ? 'Bill Details' : 'Tax Invoice'}
           </div>
 
-          {/* PARTY (BUYER) SECTION */}
           <div className="center pad" style={{ 
             borderBottom: '1px solid black', 
             lineHeight: '1.5',
-            textAlign: 'center', // Force explicit centering
+            textAlign: 'center',
             display: 'flex',
             flexDirection: 'column',
-            alignItems: 'center' // Ensures inner divs center if they use flex
+            alignItems: 'center'
           }}>
             <div style={{ width: '100%' }}>
               {isPurchase ? 'Billed To (Us):' : 'Party :'} <strong>{buyerName}</strong>
@@ -260,9 +246,7 @@ export default function PrintPage() {
               </tr>
             ))}
 
-            {/* DYNAMIC EMPTY ROWS to fill space */}
             {Array.from({ length: Math.max(0, 14 - items.length) }).map((_, index) => {
-              // Style: Keep Left/Right borders, remove Top/Bottom to make it look like continuous vertical lines
               const emptyCellStyle = { 
                 borderLeft: '1px solid black', 
                 borderRight: '1px solid black', 
@@ -284,7 +268,6 @@ export default function PrintPage() {
               );
             })}
 
-            {/* Tax Rows - Removed bottom borders for cells */}
             {showGst && (
               <>
                 <tr>
@@ -311,7 +294,6 @@ export default function PrintPage() {
         </table>
         
 
-        {/* TOTALS FOOTER */}
         <div style={{ pageBreakInside: 'avoid' }}>
         <div className="flex" style={{ borderTop: '1px solid black', borderBottom: '1px solid black' }}>
           <div style={{ flex: 1, padding: '5px', borderRight: '1px solid black', fontSize: '10px' }}>
@@ -319,7 +301,6 @@ export default function PrintPage() {
                <div>Amount Chargeable (in words) : <br/><strong>{'INR ' + (invoice.amount_in_words || numberToWords(Math.round(invoice.grand_total)))}</strong></div>
                {showGst && (<div style={{ marginTop: '5px' }}>Tax Amount (in words) : <br/><strong>INR {numberToWords(invoice.total_cgst_amount + invoice.total_sgst_amount)}</strong></div>)}
              </div>
-             {/* Only show bank details if we are the seller (Sale Mode) */}
              {!isPurchase && (
                <div style={{ marginBottom: '10px' }}>
                  <strong style={{ textDecoration: 'underline' }}>Company's Bank Details</strong><br/>
@@ -357,7 +338,6 @@ export default function PrintPage() {
              We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.
         </div>
 
-        {/* SIGNATURES */}
         <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '40px', padding: '10px 20px' }}>
             <div style={{ textAlign: 'center' }}>
                {isPurchase ? "Supplier's Seal & Signature" : "Customer's Seal & Signature"}
@@ -371,9 +351,9 @@ export default function PrintPage() {
           fontSize: '10px', 
           marginTop: '20px', 
           paddingBottom: '10px',
-          textAlign: 'center', // Explicitly center the text alignment
-          width: '100%',       // Ensure the div spans the full width of the border-box
-          display: 'block'     // Ensure it behaves as a block-level element
+          textAlign: 'center', 
+          width: '100%',
+          display: 'block'
         }}>
           <span style={{ textDecoration: 'underline' }}>This is a Computer Generated Invoice</span>
         </div>

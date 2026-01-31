@@ -1,22 +1,46 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../utils/supabaseClient'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
 export default function HistoryPage() {
-  const [invoices, setInvoices] = useState([])
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const returnToMonth = searchParams.get('month') 
+
   const [loading, setLoading] = useState(true)
   
-  // FILTER STATES
-  const [filterType, setFilterType] = useState('ALL')
-  const [searchTerm, setSearchTerm] = useState('')
+  // DATA STATES
+  const [monthlyData, setMonthlyData] = useState([])
   
-  const router = useRouter()
+  // FILTER STATES
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
+  const [availableYears, setAvailableYears] = useState([])
+
+  // VIEW STATES
+  const [view, setView] = useState('SUMMARY') // 'SUMMARY' or 'DETAIL'
+  const [selectedMonth, setSelectedMonth] = useState(null)
+
+  // RESTORED FILTERS (For Detail View)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterType, setFilterType] = useState('ALL')
 
   useEffect(() => {
     fetchInvoices()
   }, [])
+
+  useEffect(() => {
+    if (returnToMonth && monthlyData.length > 0) {
+      const targetMonth = monthlyData.find(m => m.key === returnToMonth)
+      if (targetMonth) {
+        // If we are returning to a month, ensure the year is selected
+        const monthYear = parseInt(targetMonth.key.split('-')[0])
+        setSelectedYear(monthYear)
+        openMonth(targetMonth)
+      }
+    }
+  }, [returnToMonth, monthlyData])
 
   async function fetchInvoices() {
     const { data, error } = await supabase
@@ -25,18 +49,93 @@ export default function HistoryPage() {
         *,
         customers ( company_name )
       `)
-      .order('id', { ascending: false })
+      .order('invoice_date', { ascending: true }) 
 
     if (error) console.log('Error:', error)
-    else setInvoices(data)
+    else {
+      calculateMonthlyReport(data)
+    }
     setLoading(false)
+  }
+
+  function calculateMonthlyReport(rawInvoices) {
+    // 1. Assign Global Serial Number (Vch No)
+    const invoicesWithSerial = rawInvoices.map((inv, index) => ({
+      ...inv,
+      vchNo: index + 1 
+    }))
+
+    const groups = {}
+    
+    // 2. Group by Month
+    invoicesWithSerial.forEach(inv => {
+      if(!inv.invoice_date) return;
+      const d = new Date(inv.invoice_date)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      
+      if (!groups[key]) {
+        groups[key] = {
+          key: key,
+          monthName: d.toLocaleString('default', { month: 'long', year: 'numeric' }),
+          invoices: [],
+          totalDebit: 0
+        }
+      }
+      
+      groups[key].invoices.push(inv)
+      groups[key].totalDebit += (inv.grand_total || 0)
+    })
+
+    const sortedKeys = Object.keys(groups).sort()
+    
+    let runningBalance = 0
+    
+    const reportData = sortedKeys.map(key => {
+        const item = groups[key]
+        runningBalance += item.totalDebit
+        
+        // Sort invoices by Vch No within the month
+        item.invoices.sort((a, b) => a.vchNo - b.vchNo)
+
+        return {
+            ...item,
+            closingBalance: runningBalance
+        }
+    })
+
+    // Extract unique years for the dropdown
+    const years = [...new Set(reportData.map(d => parseInt(d.key.split('-')[0])))].sort().reverse()
+    setAvailableYears(years)
+    
+    // If the current selected year isn't in the data (and we have data), select the latest year
+    if (years.length > 0 && !years.includes(selectedYear)) {
+       setSelectedYear(years[0])
+    }
+
+    setMonthlyData(reportData)
   }
 
   async function deleteInvoice(id) {
     if(!confirm('Are you sure you want to delete this invoice?')) return;
     const { error } = await supabase.from('invoices').delete().eq('id', id)
     if (error) alert('Error deleting')
-    else setInvoices(invoices.filter(inv => inv.id !== id))
+    else fetchInvoices() 
+  }
+
+  function openMonth(monthItem) {
+    setSelectedMonth(monthItem)
+    setView('DETAIL')
+    setSearchTerm('') 
+    setFilterType('ALL')
+  }
+
+  function handleExportMonth() {
+    if (!selectedMonth) return
+    const [year, month] = selectedMonth.key.split('-').map(Number)
+    const startDate = `${selectedMonth.key}-01`
+    const lastDay = new Date(year, month, 0).getDate()
+    const endDate = `${selectedMonth.key}-${String(lastDay).padStart(2, '0')}`
+    router.push(`/export?start=${startDate}&end=${endDate}`)
   }
 
   function formatDate(dateString) {
@@ -48,145 +147,231 @@ export default function HistoryPage() {
     return `${day}-${month}-${year}`;
   }
 
-  // FILTER LOGIC
-  const filteredInvoices = invoices.filter(inv => {
-    // 1. Filter by Type
-    const invType = inv.invoice_type || 'SALE'
-    const matchesType = filterType === 'ALL' || invType === filterType
-
-    // 2. Filter by Search
-    const partyName = inv.customers?.company_name || ''
-    const matchesSearch = 
-      inv.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      partyName.toLowerCase().includes(searchTerm.toLowerCase())
-
-    return matchesType && matchesSearch
-  })
-
-  // Helper for Label Colors
-  const getTypeColor = (type) => {
-    if(type === 'PURCHASE') return '#dc3545'; // Red
-    if(type === 'SALE') return '#28a745'; // Green
-    if(type === 'RAW_MATERIALS') return '#e0a800'; // Yellow/Orange
-    if(type === 'MACHINE_MAINTENANCE') return '#17a2b8'; // Blue
-    return '#666';
+  // --- FILTER LOGIC ---
+  const getFilteredInvoices = () => {
+    if (!selectedMonth) return []
+    return selectedMonth.invoices.filter(inv => {
+      const invType = inv.invoice_type || 'SALE'
+      const matchesType = filterType === 'ALL' || invType === filterType
+      const partyName = inv.customers?.company_name || ''
+      const vchNoStr = String(inv.vchNo)
+      const matchesSearch = 
+        vchNoStr.includes(searchTerm) ||
+        partyName.toLowerCase().includes(searchTerm.toLowerCase())
+      return matchesType && matchesSearch
+    })
   }
 
+  const filteredInvoices = getFilteredInvoices()
+
+  // --- DERIVED DATA FOR CURRENT VIEW ---
+  const visibleMonths = monthlyData.filter(m => m.key.startsWith(String(selectedYear)))
+  
+  // Calculate totals for the visible year
+  const yearTotalDebit = visibleMonths.reduce((sum, m) => sum + m.totalDebit, 0)
+  // The closing balance shown at the bottom should be the closing balance of the LAST visible month
+  const yearClosingBalance = visibleMonths.length > 0 
+    ? visibleMonths[visibleMonths.length - 1].closingBalance 
+    : 0
+
   return (
-    <div style={{ padding: '40px', fontFamily: 'Arial' }}>
-      
-      {/* HEADER */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h1>📂 Invoice History</h1>
-        <Link href="/">
-          <button style={{ padding: '10px 20px', background: '#333', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '4px' }}>
-            + Create New Invoice
-          </button>
-        </Link>
-        <Link href="/export">
-          <button style={{ padding: '10px 20px', background: '#28a745', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '4px', marginRight: '10px' }}>
-            📊 Export Data
-          </button>
-        </Link>
-      </div>
-
-      {/* FILTER BAR */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', background: '#f9f9f9', padding: '15px', borderRadius: '8px', border: '1px solid #eee' }}>
-        <input 
-          type="text" 
-          placeholder="🔍 Search Invoice No or Party..." 
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{ flex: 1, padding: '10px', border: '1px solid #ccc', borderRadius: '4px' }}
-        />
+    <div className="min-h-screen bg-gray-50 p-8 font-sans">
+      <div className="max-w-6xl mx-auto">
         
-        <select 
-          value={filterType} 
-          onChange={(e) => setFilterType(e.target.value)}
-          style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', minWidth: '150px' }}
-        >
-          <option value="ALL">All Types</option>
-          <option value="SALE">Sale</option>
-          <option value="PURCHASE">Purchase</option>
-          <option value="RAW_MATERIALS">Raw Materials</option>
-          <option value="MACHINE_MAINTENANCE">Machine Maint.</option>
-        </select>
-      </div>
-
-      {loading ? <p>Loading records...</p> : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', boxShadow: '0 0 10px rgba(0,0,0,0.1)' }}>
-          <thead>
-            <tr style={{ background: '#f4f4f4', textAlign: 'left' }}>
-              <th style={{ padding: '15px' }}>Date</th>
-              <th style={{ padding: '15px' }}>Type</th>
-              <th style={{ padding: '15px' }}>Invoice No</th>
-              <th style={{ padding: '15px' }}>Party</th>
-              <th style={{ padding: '15px', textAlign: 'right' }}>Amount</th>
-              <th style={{ padding: '15px', textAlign: 'center' }}>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredInvoices.length === 0 && (
-              <tr>
-                <td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: '#888' }}>
-                  No invoices found matching your filters.
-                </td>
-              </tr>
+        {/* HEADER */}
+        <div className="flex justify-between items-center mb-8">
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-bold text-gray-900">
+                {view === 'SUMMARY' ? 'Particulars' : `Particulars: ${selectedMonth?.monthName}`}
+            </h1>
+            
+            {/* YEAR DROPDOWN (Only visible in Summary view) */}
+            {view === 'SUMMARY' && (
+                <select 
+                    value={selectedYear} 
+                    onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    className="ml-4 p-2 bg-white border border-gray-300 rounded-lg text-lg font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                    {availableYears.map(y => (
+                        <option key={y} value={y}>{y}</option>
+                    ))}
+                    {availableYears.length === 0 && <option value={selectedYear}>{selectedYear}</option>}
+                </select>
             )}
-            {filteredInvoices.map((inv) => (
-              <tr key={inv.id} style={{ borderBottom: '1px solid #eee' }}>
-                <td style={{ padding: '15px' }}>{formatDate(inv.invoice_date)}</td>
-                <td style={{ padding: '15px' }}>
-                    <span style={{ 
-                        background: getTypeColor(inv.invoice_type || 'SALE'), 
-                        color: 'white', padding: '3px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold'
-                    }}>
-                        {(inv.invoice_type || 'SALE').replace('_', ' ')}
-                    </span>
-                </td>
-                <td style={{ padding: '15px', fontWeight: 'bold' }}>{inv.invoice_number}</td>
-                <td style={{ padding: '15px' }}>
-                  {inv.customers?.company_name || 'Unknown'}
-                </td>
-                <td style={{ padding: '15px', textAlign: 'right', color: 'green', fontWeight: 'bold' }}>
-                  ₹ {inv.grand_total.toFixed(2)}
-                </td>
-                <td style={{ padding: '15px', textAlign: 'center' }}>
-                    <button 
-                        onClick={() => router.push(`/?id=${inv.id}`)}
-                        style={{ marginRight: '10px', background: '#ffc107', border: 'none', padding: '5px 10px', cursor: 'pointer', borderRadius: '4px' }}
-                        title="Edit"
+          </div>
+
+          <div className="flex gap-4">
+            {view === 'DETAIL' ? (
+               <div className="flex gap-3">
+                   <button 
+                     onClick={handleExportMonth}
+                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm flex items-center gap-2"
+                   >
+                     📊 Export This Month
+                   </button>
+                   <button 
+                     onClick={() => { setView('SUMMARY'); router.replace('/history'); }}
+                     className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors shadow-sm"
+                   >
+                     &larr; Back to Months
+                   </button>
+               </div>
+            ) : (
+                <>
+                    <Link href="/">
+                        <button className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-black transition-colors shadow-sm">
+                        + New Invoice
+                        </button>
+                    </Link>
+                    <Link href="/export">
+                        <button className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm">
+                        📊 Export
+                        </button>
+                    </Link>
+                </>
+            )}
+          </div>
+        </div>
+
+        {loading ? <p className="text-gray-500">Loading data...</p> : (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            
+            {/* VIEW 1: MONTHLY SUMMARY */}
+            {view === 'SUMMARY' && (
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-100 text-gray-600 text-sm uppercase tracking-wider border-b border-gray-200">
+                    <th className="p-4 font-semibold">Month</th>
+                    <th className="p-4 font-semibold text-right">Total Debit (₹)</th>
+                    <th className="p-4 font-semibold text-right">Closing Balance (₹)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {visibleMonths.map((item) => (
+                    <tr 
+                        key={item.key} 
+                        onClick={() => openMonth(item)}
+                        className="hover:bg-blue-50 transition-colors cursor-pointer group"
                     >
-                        ✏️
-                    </button>
-                  <button 
-                    onClick={() => router.push(`/print/${inv.id}`)}
-                    style={{ 
-                      padding: '5px 15px', 
-                      background: '#007bff', 
-                      color: 'white', 
-                      border: 'none', 
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      marginRight: '10px'
-                    }}
-                    title="Print"
-                  >
-                    🖨️
-                  </button>
-                  <button 
-                        onClick={() => deleteInvoice(inv.id)}
-                        style={{ padding: '5px 10px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                        title="Delete"
-                    >
-                        🗑️
-                    </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+                      <td className="p-4 font-medium text-blue-600 group-hover:underline">
+                        {item.monthName}
+                      </td>
+                      <td className="p-4 text-right font-medium">
+                        {item.totalDebit.toFixed(2)}
+                      </td>
+                      <td className="p-4 text-right font-bold text-gray-800">
+                        {item.closingBalance.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                  {visibleMonths.length === 0 && (
+                    <tr>
+                        <td colSpan="3" className="p-8 text-center text-gray-400">No records found for {selectedYear}.</td>
+                    </tr>
+                  )}
+                  {/* GAP ROW */}
+                  <tr className="h-12 border-b border-gray-200 bg-gray-50/50">
+                    <td colSpan="3"></td>
+                  </tr>
+                </tbody>
+                {visibleMonths.length > 0 && (
+                    <tfoot className="bg-gray-100 font-bold border-t-2 border-gray-300">
+                        <tr>
+                            <td className="p-4 text-gray-900 text-lg">TOTAL ({selectedYear})</td>
+                            <td className="p-4 text-right text-gray-900 text-lg">{yearTotalDebit.toFixed(2)}</td>
+                            <td className="p-4 text-right text-gray-900 text-lg">{yearClosingBalance.toFixed(2)}</td>
+                        </tr>
+                    </tfoot>
+                )}
+              </table>
+            )}
+
+            {/* VIEW 2: DRILL-DOWN INVOICE LIST */}
+            {view === 'DETAIL' && selectedMonth && (
+              <>
+              <div className="p-4 bg-gray-50 border-b border-gray-200 flex gap-4">
+                <input 
+                  type="text" 
+                  placeholder="🔍 Search Vch No or Party..." 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="flex-1 p-2 border border-gray-300 rounded text-sm outline-none focus:border-blue-500"
+                />
+                <select 
+                  value={filterType} 
+                  onChange={(e) => setFilterType(e.target.value)}
+                  className="p-2 border border-gray-300 rounded text-sm outline-none focus:border-blue-500 cursor-pointer"
+                >
+                  <option value="ALL">All Types</option>
+                  <option value="SALE">Sale</option>
+                  <option value="PURCHASE">Purchase</option>
+                  <option value="RAW_MATERIALS">Raw Materials</option>
+                  <option value="MACHINE_MAINTENANCE">Machine Maint.</option>
+                </select>
+              </div>
+
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-100 text-gray-600 text-sm uppercase tracking-wider border-b border-gray-200">
+                    <th className="p-4 font-semibold">Date</th>
+                    <th className="p-4 font-semibold">Particulars</th>
+                    <th className="p-4 font-semibold">Type</th>
+                    <th className="p-4 font-semibold">Vch No.</th>
+                    <th className="p-4 font-semibold text-right">Amount (₹)</th>
+                    <th className="p-4 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredInvoices.map((inv) => (
+                    <tr key={inv.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="p-4 text-gray-600">
+                        {formatDate(inv.invoice_date)}
+                      </td>
+                      <td className="p-4 font-medium text-gray-900">
+                        {inv.customers?.company_name || 'Unknown Party'}
+                      </td>
+                      <td className="p-4 text-sm">
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${inv.is_gst_bill ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
+                            {inv.is_gst_bill ? 'GST' : 'Non-GST'}
+                        </span>
+                      </td>
+                      <td className="p-4 text-gray-600 font-mono">
+                        {inv.vchNo}
+                      </td>
+                      <td className="p-4 text-right font-medium text-green-700">
+                        {inv.grand_total.toFixed(2)}
+                      </td>
+                      <td className="p-4 text-center flex justify-center gap-2">
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); router.push(`/print/${inv.id}?month=${selectedMonth.key}`); }}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded"
+                            title="Print"
+                        >
+                            🖨️
+                        </button>
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); deleteInvoice(inv.id); }}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded"
+                            title="Delete"
+                        >
+                            🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredInvoices.length === 0 && (
+                    <tr>
+                        <td colSpan="6" className="p-8 text-center text-gray-400">No invoices found matching your filters.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+              </>
+            )}
+
+          </div>
+        )}
+      </div>
     </div>
   )
 }

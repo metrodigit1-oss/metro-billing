@@ -2,10 +2,12 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../utils/supabaseClient'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 export default function ExportPage() {
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(false)
+  const searchParams = useSearchParams()
   
   // FILTER STATES
   const [startDate, setStartDate] = useState('')
@@ -16,7 +18,15 @@ export default function ExportPage() {
 
   useEffect(() => {
     fetchInitialData()
-  }, [])
+    
+    // Auto-fill dates from URL params if present
+    const urlStart = searchParams.get('start')
+    const urlEnd = searchParams.get('end')
+    
+    if (urlStart) setStartDate(urlStart)
+    if (urlEnd) setEndDate(urlEnd)
+
+  }, [searchParams])
 
   async function fetchInitialData() {
     const { data: custData } = await supabase.from('customers').select('id, company_name')
@@ -78,7 +88,7 @@ export default function ExportPage() {
       inv.invoice_date,
       inv.invoice_number,
       inv.invoice_type || 'SALE',
-      inv.payment_mode || 'CREDIT', // Added Payment Mode here
+      inv.payment_mode || 'CREDIT', 
       inv.customers?.company_name || 'N/A',
       inv.customers?.gstin || 'N/A',
       inv.total_taxable_value.toFixed(2),
