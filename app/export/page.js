@@ -15,6 +15,10 @@ export default function ExportPage() {
   const [typeFilter, setTypeFilter] = useState('ALL')
   const [customers, setCustomers] = useState([])
   const [selectedParty, setSelectedParty] = useState('ALL')
+  
+  // NEW FILTERS
+  const [paymentModeFilter, setPaymentModeFilter] = useState('ALL')
+  const [gstFilter, setGstFilter] = useState('ALL')
 
   useEffect(() => {
     fetchInitialData()
@@ -59,6 +63,10 @@ export default function ExportPage() {
       if (endDate) query = query.lte('invoice_date', endDate)
       if (typeFilter !== 'ALL') query = query.eq('invoice_type', typeFilter)
       if (selectedParty !== 'ALL') query = query.eq('customer_id', selectedParty)
+      
+      // New Filter Logic
+      if (paymentModeFilter !== 'ALL') query = query.eq('payment_mode', paymentModeFilter)
+      if (gstFilter !== 'ALL') query = query.eq('is_gst_bill', gstFilter === 'GST')
 
       const { data, error } = await query
       if (error) throw error
@@ -170,6 +178,35 @@ export default function ExportPage() {
                 {customers.map(c => (
                   <option key={c.id} value={c.id}>{c.company_name}</option>
                 ))}
+              </select>
+            </div>
+
+            {/* NEW: Payment Mode Filter */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-600 mb-2">Payment Mode</label>
+              <select 
+                className="w-full p-2 border rounded-lg"
+                value={paymentModeFilter}
+                onChange={e => setPaymentModeFilter(e.target.value)}
+              >
+                <option value="ALL">All Modes</option>
+                <option value="CREDIT">Credit</option>
+                <option value="CASH">Cash</option>
+                <option value="BANK">Bank Transfer</option>
+              </select>
+            </div>
+
+            {/* NEW: GST Status Filter */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-600 mb-2">Bill Status</label>
+              <select 
+                className="w-full p-2 border rounded-lg"
+                value={gstFilter}
+                onChange={e => setGstFilter(e.target.value)}
+              >
+                <option value="ALL">All Bills</option>
+                <option value="GST">GST Bills Only</option>
+                <option value="NONGST">Non-GST Bills Only</option>
               </select>
             </div>
           </div>
