@@ -11,6 +11,7 @@ export default function BankLedgerPage() {
 
   useEffect(() => {
     fetchBankBook()
+    fetchOpeningBalance() // <--- Load saved balance
   }, [])
 
   useEffect(() => {
@@ -18,6 +19,25 @@ export default function BankLedgerPage() {
     const tCredit = entries.reduce((sum, item) => sum + (item.credit || 0), 0)
     setTotals({ debit: tDebit, credit: tCredit })
   }, [entries])
+
+  // --- NEW: Fetch Opening Balance ---
+  async function fetchOpeningBalance() {
+    const { data } = await supabase
+      .from('ledger_settings')
+      .select('setting_value')
+      .eq('setting_key', 'bank_opening') // <--- Different key for Bank
+      .single()
+    
+    if (data) setOpeningBalance(data.setting_value)
+  }
+
+  // --- NEW: Save Opening Balance on Blur ---
+  async function saveOpeningBalance() {
+    await supabase
+      .from('ledger_settings')
+      .update({ setting_value: openingBalance })
+      .eq('setting_key', 'bank_opening')
+  }
 
   async function fetchBankBook() {
     const { data } = await supabase
@@ -27,7 +47,6 @@ export default function BankLedgerPage() {
         .order('created_at', { ascending: true })
     
     if (data) {
-        // GLOBAL SEQUENTIAL NUMBERING
         const processedData = data.map((item, index) => ({
             ...item,
             dynamicVchNo: index + 1
@@ -67,9 +86,10 @@ export default function BankLedgerPage() {
                 <label className="font-bold text-gray-700">Opening Balance:</label>
                 <input 
                     type="number" 
-                    className="border border-gray-300 p-1 w-32 text-right font-bold"
+                    className="border border-gray-300 p-1 w-32 text-right font-bold bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                     value={openingBalance}
                     onChange={(e) => setOpeningBalance(parseFloat(e.target.value) || 0)}
+                    onBlur={saveOpeningBalance} // <--- Save on blur
                 />
             </div>
             <div className="flex gap-2">
@@ -100,12 +120,15 @@ export default function BankLedgerPage() {
             {loading ? <div className="p-4">Loading...</div> : entries.map((entry) => (
                 <div key={entry.id} className="flex border-b border-gray-100 hover:bg-yellow-50 text-gray-800 h-8 items-center group">
                     <div className="w-24 px-2 text-center text-gray-600">{formatDate(entry.date)}</div>
+                    
                     <div className="flex-1 px-2 font-medium truncate cursor-pointer hover:text-blue-600">
-                        <Link href={`/bank/new?id=${entry.id}`}>{entry.particulars}</Link>
+                        <Link href={`/bank/new?id=${entry.id}`}>
+                            {entry.particulars}
+                        </Link>
                     </div>
+                    
                     <div className="w-24 px-2 text-center text-xs">{entry.vch_type}</div>
                     
-                    {/* DYNAMIC GLOBAL VCH NO */}
                     <div className="w-20 px-2 text-center text-gray-500 font-mono">
                         {entry.dynamicVchNo}
                     </div>
@@ -116,6 +139,7 @@ export default function BankLedgerPage() {
                     <div className="w-32 px-2 text-right font-mono font-bold text-red-700">
                         {entry.credit > 0 ? entry.credit.toFixed(2) : ''}
                     </div>
+                    
                     <div className="w-16 px-2 text-center flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Link href={`/bank/new?id=${entry.id}`}>
                             <button className="text-blue-500 hover:text-blue-700 font-bold">✎</button>
@@ -133,12 +157,14 @@ export default function BankLedgerPage() {
                 <div className="w-32 p-1 bg-gray-200"></div>
                 <div className="w-10"></div>
             </div>
+
             <div className="flex border-b border-gray-300 font-bold">
                 <div className="flex-1 p-1 text-right pr-4 text-gray-800">Current Total :</div>
                 <div className="w-32 p-1 text-right font-mono border-t border-gray-400">{totals.debit.toFixed(2)}</div>
                 <div className="w-32 p-1 text-right font-mono border-t border-gray-400">{totals.credit.toFixed(2)}</div>
                 <div className="w-10"></div>
             </div>
+
             <div className="flex font-bold bg-[#e2e6ea] text-gray-900 h-10 items-center">
                 <div className="flex-1 text-right pr-4">Closing Balance :</div>
                 <div className="w-64 text-center font-mono text-lg border-double border-t-4 border-gray-400">

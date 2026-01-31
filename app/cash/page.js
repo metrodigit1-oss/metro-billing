@@ -7,30 +7,52 @@ export default function CashLedgerPage() {
   const [entries, setEntries] = useState([])
   const [openingBalance, setOpeningBalance] = useState(0)
   const [loading, setLoading] = useState(true)
-
-  // Aggregates
   const [totals, setTotals] = useState({ debit: 0, credit: 0 })
 
   useEffect(() => {
     fetchCashBook()
+    fetchOpeningBalance() // <--- Load saved balance
   }, [])
 
   useEffect(() => {
-    // Recalculate totals whenever entries change
     const tDebit = entries.reduce((sum, item) => sum + (item.debit || 0), 0)
     const tCredit = entries.reduce((sum, item) => sum + (item.credit || 0), 0)
     setTotals({ debit: tDebit, credit: tCredit })
   }, [entries])
 
+  // --- NEW: Fetch Opening Balance ---
+  async function fetchOpeningBalance() {
+    const { data } = await supabase
+      .from('ledger_settings')
+      .select('setting_value')
+      .eq('setting_key', 'cash_opening')
+      .single()
+    
+    if (data) setOpeningBalance(data.setting_value)
+  }
+
+  // --- NEW: Save Opening Balance on Blur ---
+  async function saveOpeningBalance() {
+    await supabase
+      .from('ledger_settings')
+      .update({ setting_value: openingBalance })
+      .eq('setting_key', 'cash_opening')
+  }
+
   async function fetchCashBook() {
-    // Fetch and sort by date ascending
     const { data } = await supabase
         .from('cash_book')
         .select('*')
         .order('date', { ascending: true })
-        .order('id', { ascending: true })
+        .order('created_at', { ascending: true })
     
-    if (data) setEntries(data)
+    if (data) {
+        const processedData = data.map((item, index) => ({
+            ...item,
+            dynamicVchNo: index + 1
+        }))
+        setEntries(processedData)
+    }
     setLoading(false)
   }
 
@@ -54,10 +76,9 @@ export default function CashLedgerPage() {
     <div className="min-h-screen bg-gray-100 p-4 font-sans text-sm">
       <div className="max-w-7xl mx-auto bg-white shadow-lg border border-gray-300 min-h-[80vh] flex flex-col">
         
-        {/* Tally Style Header */}
         <div className="bg-[#2a6698] text-white p-2 flex justify-between items-center">
-            <div className="font-bold">Cash Ledger</div>
-            <div className="text-xs">1-Apr-2024 to 31-Mar-2025</div>
+            <div className="font-bold">Ledger: Cash</div>
+            <div className="text-xs">Global Chronological Order</div>
         </div>
 
         <div className="p-4 bg-[#fbfbfb] border-b flex justify-between items-center">
@@ -65,9 +86,10 @@ export default function CashLedgerPage() {
                 <label className="font-bold text-gray-700">Opening Balance:</label>
                 <input 
                     type="number" 
-                    className="border border-gray-300 p-1 w-32 text-right font-bold"
+                    className="border border-gray-300 p-1 w-32 text-right font-bold bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                     value={openingBalance}
                     onChange={(e) => setOpeningBalance(parseFloat(e.target.value) || 0)}
+                    onBlur={saveOpeningBalance} // <--- Saves when you leave the field
                 />
             </div>
             <div className="flex gap-2">
@@ -84,7 +106,6 @@ export default function CashLedgerPage() {
             </div>
         </div>
 
-        {/* Table Header */}
         <div className="flex bg-[#e2e6ea] border-b border-gray-400 font-bold text-gray-800 text-center text-xs uppercase tracking-wide">
             <div className="w-24 p-2 border-r border-white">Date</div>
             <div className="flex-1 p-2 border-r border-white text-left">Particulars</div>
@@ -95,21 +116,22 @@ export default function CashLedgerPage() {
             <div className="w-10 p-2"></div>
         </div>
 
-        {/* Table Body */}
         <div className="flex-1 overflow-y-auto">
             {loading ? <div className="p-4">Loading...</div> : entries.map((entry) => (
                 <div key={entry.id} className="flex border-b border-gray-100 hover:bg-yellow-50 text-gray-800 h-8 items-center group">
                     <div className="w-24 px-2 text-center text-gray-600">{formatDate(entry.date)}</div>
                     
-                    {/* Make Particulars Clickable to Edit */}
-                    <div className="flex-1 px-2 font-medium truncate cursor-pointer hover:text-blue-600" title="Click to Edit">
+                    <div className="flex-1 px-2 font-medium truncate cursor-pointer hover:text-blue-600">
                         <Link href={`/cash/new?id=${entry.id}`}>
                             {entry.particulars}
                         </Link>
                     </div>
                     
                     <div className="w-24 px-2 text-center text-xs">{entry.vch_type}</div>
-                    <div className="w-20 px-2 text-center text-gray-500">{entry.vch_no}</div>
+                    <div className="w-20 px-2 text-center text-gray-500 font-mono">
+                        {entry.dynamicVchNo}
+                    </div>
+
                     <div className="w-32 px-2 text-right font-mono font-bold text-gray-700">
                         {entry.debit > 0 ? entry.debit.toFixed(2) : ''}
                     </div>
@@ -117,21 +139,17 @@ export default function CashLedgerPage() {
                         {entry.credit > 0 ? entry.credit.toFixed(2) : ''}
                     </div>
                     
-                    {/* Action Buttons */}
                     <div className="w-16 px-2 text-center flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Link href={`/cash/new?id=${entry.id}`}>
-                            <button className="text-blue-500 hover:text-blue-700 font-bold" title="Edit">✎</button>
+                            <button className="text-blue-500 hover:text-blue-700 font-bold">✎</button>
                         </Link>
-                        <button onClick={() => deleteEntry(entry.id)} className="text-red-500 hover:text-red-700 font-bold" title="Delete">×</button>
+                        <button onClick={() => deleteEntry(entry.id)} className="text-red-500 hover:text-red-700 font-bold">×</button>
                     </div>
                 </div>
             ))}
         </div>
 
-        {/* Footer / Totals */}
         <div className="bg-[#f0f0f0] border-t border-gray-400 text-sm">
-            
-            {/* Opening Balance Row Calculation Display */}
             <div className="flex border-b border-gray-300">
                 <div className="flex-1 p-1 text-right pr-4 font-semibold text-gray-600">Opening Balance :</div>
                 <div className="w-32 p-1 text-right font-mono text-gray-600">{openingBalance.toFixed(2)}</div>
@@ -139,7 +157,6 @@ export default function CashLedgerPage() {
                 <div className="w-10"></div>
             </div>
 
-            {/* Current Totals */}
             <div className="flex border-b border-gray-300 font-bold">
                 <div className="flex-1 p-1 text-right pr-4 text-gray-800">Current Total :</div>
                 <div className="w-32 p-1 text-right font-mono border-t border-gray-400">{totals.debit.toFixed(2)}</div>
@@ -147,11 +164,10 @@ export default function CashLedgerPage() {
                 <div className="w-10"></div>
             </div>
 
-            {/* Closing Balance */}
             <div className="flex font-bold bg-[#e2e6ea] text-gray-900 h-10 items-center">
                 <div className="flex-1 text-right pr-4">Closing Balance :</div>
                 <div className="w-64 text-center font-mono text-lg border-double border-t-4 border-gray-400">
-                    {closingBalance.toFixed(2)} 
+                    {closingBalance.toFixed(2)} {closingBalance >= 0 ? 'Dr' : 'Cr'}
                 </div>
                 <div className="w-10"></div>
             </div>
